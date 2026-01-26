@@ -1,0 +1,19 @@
+collab_with <stdio.h>
+
+rizz main_character() {
+    rizz x;
+    spill_tea("Enter a number (rizz check): ");
+    gimme("%d", &x);
+
+    vibe_check (x > 10) {
+        spill_tea("That's big energy (Greater than 10).\n");
+    }
+    lowkey (x same_energy 10) {
+        spill_tea("Perfectly balanced (Equal to 10).\n");
+    }
+    canceled {
+        spill_tea("Small vibes (Less than 10).\n");
+    }
+
+    peace_out;
+}
