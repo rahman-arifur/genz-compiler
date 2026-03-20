@@ -1,31 +1,81 @@
 %{
-#include <stdio.h>
+	#include <stdio.h>
+	#include "GenZ.tab.h"
+	#include <stdlib.h>
+	#include <string.h>
+
+    // Function to handle errors
+	void yyerror(char *s);
 %}
 
 %%
+"collab_with"[ ]+<[^>]+>  { /* Ignore headers */ }
+"tbh"[^\n]*               { /* Ignore single-line comment */ }
+"//"[^\n]*                { /* Ignore standard single-line comment */ }
+"story_time"(.|\n)*"end_story" { /* Ignore GenZ multi-line comment */ }
+"/*"([^*]|\*+[^*/])*\*+"/" { /* Ignore standard multi-line comment */ }
 
-"collab_with"       { printf("#include"); }
-"main_character"    { printf("main"); }
-"rizz"              { printf("int"); }
-"spill_tea"         { printf("printf"); }
-"gimme"             { printf("scanf"); }
-"vibe_check"        { printf("if"); }
-"lowkey"            { printf("else if"); }
-"canceled"          { printf("else"); }
-"peace_out"         { printf("return 0"); }
-"sus"               { printf("!"); }
-"same_energy"       { printf("=="); }
+"rizz"                    { return TYPE_INT; }
+"bet"                     { return TYPE_BOOL; }
+"ish"                     { return TYPE_FLOAT; /* Treated as int for demo */ }
+"yap"                     { return TYPE_STRING; }
 
-.                   { printf("%s", yytext); }
-\n                  { printf("\n"); }
+"main_character"          { return MAIN; }
+"spill_tea"               { return PRINT; }
+"gimme"                   { return SCAN; }
+
+"vibe_check"              { return IF; }
+"lowkey"                  { return ELSEIF; }
+"canceled"                { return ELSE; }
+"doomscroll"              { return WHILE; }
+"iter8"                   { return FOR; }
+"yeet"                    { return BREAK; }
+"skrrrt"                  { return CONTINUE; }
+"peace_out"               { return RETURN; }
+
+"sus"                     { return NOT; }
+"same_energy"             { return EQ; }
+"diff_energy"             { return NEQ; }
+"flash_forward"           { return INC; }
+"flash_back"              { return DEC; }
+"cap"                     { yylval.num = 0; return NUMBER; }
+"no_cap"                  { yylval.num = 1; return NUMBER; }
+
+[a-zA-Z_][a-zA-Z0-9_]*    { yylval.str = strdup(yytext); return ID; }
+[0-9]+                    { yylval.num = atoi(yytext); return NUMBER; }
+\"[^"]*\"                 { 
+    yylval.str = strdup(yytext+1); 
+    if (yylval.str[strlen(yylval.str)-1] == '"')
+        yylval.str[strlen(yylval.str)-1] = 0;
+    return STRING; 
+}
+
+"{"                       { return LBRACE; }
+"}"                       { return RBRACE; }
+"("                       { return LPAREN; }
+")"                       { return RPAREN; }
+";"                       { return SEMICOLON; }
+"="                       { return ASSIGN; }
+"+"                       { return PLUS; }
+"-"                       { return MINUS; }
+"*"                       { return MULT; }
+"/"                       { return DIV; }
+">"                       { return GT; }
+"<"                       { return LT; }
+">="                      { return GE; }
+"<="                      { return LE; }
+"++"                      { return INC; }
+"--"                      { return DEC; }
+"=="                      { return EQ; }
+"!="                      { return NEQ; }
+"&&"                      { return AND; }
+"||"                      { return OR; }
+"!"                       { return NOT; }
+","                       { return COMMA; }
+
+[ \t\n]+                  { /* Skip whitespace */ }
+.                         { return yytext[0]; }
 
 %%
 
-int main() {
-    yylex();
-    return 0;
-}
-
-int yywrap() {
-    return 1;
-}
+int yywrap() { return 1; }
