@@ -1,0 +1,43 @@
+main_character() {
+    spill_tea("--- GenZ Compiler Test Suite ---\n");
+
+    /* 1. Variables & Types */
+    rizz age = 20;
+    rizz year = 2026;
+    spill_tea("Current Year: ");
+    spill_tea(year);
+    
+    /* 2. Arithmetic */
+    rizz calc = (age * 2) + 10;
+    spill_tea("Age calculation: ");
+    spill_tea(calc);
+
+    /* 3. Logic & Vibe Check (If) */
+    vibe_check (calc > 40) {
+        spill_tea("Correct: Calc is > 40\n");
+    }
+
+    /* 4. Input (Gimme) */
+    spill_tea("Enter a lucky number (gimme): ");
+    rizz luck;
+    gimme(luck);
+    spill_tea("You picked: ");
+    spill_tea(luck);
+
+    /* 5. Doomscroll (While Loop) */
+    spill_tea("Counting down (Doomscroll):\n");
+    rizz i = 5;
+    doomscroll (i > 0) {
+        spill_tea(i);
+        i = i - 1;
+    }
+    spill_tea("Blast off!\n");
+
+    /* 6. Iter8 (For Loop) */
+    spill_tea("Iterating (Iter8):\n");
+    iter8(j = 0; j < 3; j++) {
+        spill_tea(j);
+    }
+    
+    peace_out;
+}

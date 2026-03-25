@@ -1,0 +1,78 @@
+main_character() {
+    spill_tea("--- FULL SYSTEM CHECK ---\n");
+
+    /* 1. Variables */
+    rizz age = 20;
+    bet is_cool = 1;
+    spill_tea("Variables Check: Age=");
+    spill_tea(age);
+    spill_tea("\n");
+
+    /* 2. Logic (NOT) */
+    spill_tea("Logic Check (sus): ");
+    vibe_check (sus is_cool) {
+        spill_tea("FAIL (sus 1 should be 0)\n");
+    }
+    canceled {
+        spill_tea("PASS (sus 1 is 0)\n");
+    }
+
+    /* 3. Control Flow: ELSEIF / ELSE */
+    spill_tea("Flow Check 1 (vibe_check): ");
+    vibe_check (age > 10) {
+        spill_tea("PASS\n");
+    }
+    canceled {
+        spill_tea("FAIL\n");
+    }
+
+    spill_tea("Flow Check 2 (lowkey): ");
+    vibe_check (age < 5) {
+        spill_tea("FAIL (IF)\n");
+    }
+    lowkey (age > 15) {
+        spill_tea("PASS (ELSEIF)\n");
+    }
+    canceled {
+        spill_tea("FAIL (ELSE)\n");
+    }
+
+    spill_tea("Flow Check 3 (canceled): ");
+    vibe_check (age < 5) {
+        spill_tea("FAIL (IF)\n");
+    }
+    canceled {
+        spill_tea("PASS (ELSE)\n");
+    }
+
+    /* 4. Loops */
+    spill_tea("Loop Check (doomscroll): ");
+    rizz i = 3;
+    doomscroll (i > 0) {
+        spill_tea(i);
+        i = i - 1;
+    }
+    spill_tea(" GO!\n");
+
+    spill_tea("Loop Check (iter8): ");
+    iter8(j = 0; j < 2; j++) {
+        spill_tea(j);
+    }
+    spill_tea(" DONE\n");
+
+    /* 5. Input */
+    spill_tea("Input Check: Enter 42 -> ");
+    rizz val;
+    gimme(val);
+    vibe_check(val == 42) {
+        spill_tea("PASS: Read 42\n");
+    }
+    canceled {
+        spill_tea("FAIL: Read ");
+        spill_tea(val);
+        spill_tea("\n");
+    }
+
+    spill_tea("--- ALL SYSTEMS OPERATIONAL ---\n");
+    peace_out;
+}

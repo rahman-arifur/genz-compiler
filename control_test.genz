@@ -1,0 +1,38 @@
+main_character() {
+    spill_tea("--- BREAK/CONTINUE CHECK ---\n");
+
+    /* 1. Test BREAK (yeet) */
+    spill_tea("Test 1: Yeet (Break) at 3\n");
+    rizz i = 5;
+    doomscroll (i > 0) {
+        spill_tea(i);
+        vibe_check(i == 3) {
+            spill_tea(" -> Yeet!\n");
+            yeet;
+        }
+        i = i - 1;
+    }
+
+    /* 2. Test CONTINUE (skrrrt) */
+    spill_tea("Test 2: Skrrrt (Continue) skipping 2\n");
+    i = 0;
+    doomscroll (i < 4) {
+        i++;
+        vibe_check(i == 2) {
+            spill_tea(" (skrrrt) ");
+            skrrrt;
+        }
+        spill_tea(i);
+    }
+    spill_tea("\n");
+    
+    /* 3. Test Standalone ++ (Flash Forward) */
+    spill_tea("Test 3: Flash Forward x++\n");
+    rizz x = 10;
+    x++; 
+    spill_tea("Expected 11, Got: ");
+    spill_tea(x);
+    spill_tea("\n");
+
+    peace_out;
+}
