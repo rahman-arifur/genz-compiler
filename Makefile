@@ -1,12 +1,11 @@
 all:
+	bison -d GenZ.y
+
 	flex GenZ.l
-	gcc lex.yy.c -o genz_transpiler
-	./genz_transpiler < demo.genz > out.c
-	gcc out.c -o demo
-	@echo "------------------------------------"
-	@echo "Compilation Successful. Running Demo:"
-	@echo "------------------------------------"
-	./demo
+
+	gcc lex.yy.c GenZ.tab.c -o genz_compiler
+
+	./genz_compiler test.genz
 
 clean:
-	rm -f lex.yy.c genz_transpiler out.c demo_program
+	rm -f lex.yy.c GenZ.tab.c GenZ.tab.h genz_compiler
