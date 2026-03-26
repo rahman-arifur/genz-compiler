@@ -4,6 +4,7 @@
 	#include <string.h>
 
 	extern FILE *yyin;
+	extern int yylineno;
 
 	void yyerror(char *s);
 	int yylex();
@@ -11,22 +12,99 @@
 	// ---------------------------------------------------------
 	// SYMBOL TABLE (To store variables like 'x', 'y')
 	// ---------------------------------------------------------
+	enum VarType { V_INT=1, V_BOOL, V_FLOAT, V_STRING };
+
 	struct Symbol {
 		char *name;
-		int value;
+		int declared;
+		int type;
+		int int_value;
+		char *str_value;
 	} sym_table[100];
 
 	int sym_count = 0;
 
-	// Helper: Find or Create a variable
-	int* get_var_ptr(char *name) {
-		for(int i=0; i<sym_count; i++) {
-			if(strcmp(sym_table[i].name, name) == 0) return &sym_table[i].value;
+	int semantic_errors = 0;
+
+	int find_symbol(const char *name) {
+		for (int i = 0; i < sym_count; i++) {
+			if (strcmp(sym_table[i].name, name) == 0) return i;
 		}
-		// Create new
+		return -1;
+	}
+
+	int ensure_symbol(const char *name) {
+		int idx = find_symbol(name);
+		if (idx >= 0) return idx;
 		sym_table[sym_count].name = strdup(name);
-		sym_table[sym_count].value = 0;
-		return &sym_table[sym_count++].value;
+		sym_table[sym_count].declared = 0;
+		sym_table[sym_count].type = V_INT;
+		sym_table[sym_count].int_value = 0;
+		sym_table[sym_count].str_value = NULL;
+		return sym_count++;
+	}
+
+	void declare_symbol(const char *name, int type) {
+		int idx = ensure_symbol(name);
+		sym_table[idx].declared = 1;
+		sym_table[idx].type = type;
+		if (type != V_STRING && sym_table[idx].str_value) {
+			free(sym_table[idx].str_value);
+			sym_table[idx].str_value = NULL;
+		}
+	}
+
+	void semantic_error(const char *msg, const char *name) {
+		fprintf(stderr, "Semantic error at line %d: %s (%s)\n", yylineno, msg, name ? name : "-");
+		semantic_errors++;
+	}
+
+	void assign_numeric(const char *name, int value) {
+		int idx = ensure_symbol(name);
+		if (!sym_table[idx].declared) {
+			// Keep backward compatibility for undeclared IDs in old tests.
+			declare_symbol(name, V_INT);
+		}
+		if (sym_table[idx].type == V_STRING) {
+			semantic_error("cannot assign numeric value to string variable", name);
+			return;
+		}
+		if (sym_table[idx].type == V_BOOL) {
+			sym_table[idx].int_value = value ? 1 : 0; // implicit numeric->bool conversion
+			return;
+		}
+		sym_table[idx].int_value = value;
+	}
+
+	void assign_string(const char *name, const char *value) {
+		int idx = ensure_symbol(name);
+		if (!sym_table[idx].declared) {
+			declare_symbol(name, V_STRING);
+		}
+		if (sym_table[idx].type != V_STRING) {
+			semantic_error("cannot assign string value to numeric variable", name);
+			return;
+		}
+		if (sym_table[idx].str_value) free(sym_table[idx].str_value);
+		sym_table[idx].str_value = strdup(value ? value : "");
+	}
+
+	int get_numeric(const char *name) {
+		int idx = ensure_symbol(name);
+		if (sym_table[idx].type == V_STRING) {
+			semantic_error("cannot use string variable in numeric expression", name);
+			return 0;
+		}
+		return sym_table[idx].int_value;
+	}
+
+	const char* get_string(const char *name) {
+		int idx = ensure_symbol(name);
+		if (sym_table[idx].type != V_STRING) {
+			semantic_error("cannot use numeric variable as string", name);
+			return "";
+		}
+		return sym_table[idx].str_value ? sym_table[idx].str_value : "";
 	}
 
 	// ---------------------------------------------------------
@@ -43,10 +121,10 @@
 	} Node;
 
 	// Node Types
-	enum { NODE_CONST=1, NODE_VAR, NODE_ADD, NODE_SUB, NODE_MUL, NODE_DIV, 
-	       NODE_ASSIGN, NODE_IF, NODE_WHILE, NODE_FOR, NODE_PRINT, NODE_SCAN, 
-           NODE_LT, NODE_GT, NODE_LE, NODE_GE, NODE_EQ, NODE_NEQ, NODE_AND, NODE_OR, NODE_NOT, NODE_SEQ,
-           NODE_BREAK, NODE_CONTINUE };
+	enum { NODE_CONST=1, NODE_VAR, NODE_ADD, NODE_SUB, NODE_MUL, NODE_DIV, NODE_MOD,
+	       NODE_ASSIGN, NODE_ASSIGN_STR, NODE_IF, NODE_WHILE, NODE_FOR, NODE_PRINT, NODE_PRINT_VAR, NODE_SCAN,
+	       NODE_LT, NODE_GT, NODE_LE, NODE_GE, NODE_EQ, NODE_NEQ, NODE_AND, NODE_OR, NODE_NOT, NODE_SEQ,
+	       NODE_BREAK, NODE_CONTINUE, NODE_STRCONST };
 
     // Global Control Flow State (0=Normal, 1=Break, 2=Continue)
     int cf_state = 0;
@@ -64,6 +142,43 @@
 		return n;
 	}
 
+	Node* optimize_ast(Node *n) {
+		if (!n) return NULL;
+		n->left = optimize_ast(n->left);
+		n->right = optimize_ast(n->right);
+		n->next = optimize_ast(n->next);
+
+		// Constant folding for pure numeric expressions.
+		if (n->left && n->right && n->left->type == NODE_CONST && n->right->type == NODE_CONST) {
+			int a = n->left->int_val;
+			int b = n->right->int_val;
+			int out;
+			switch (n->type) {
+				case NODE_ADD: out = a + b; break;
+				case NODE_SUB: out = a - b; break;
+				case NODE_MUL: out = a * b; break;
+				case NODE_DIV: if (b == 0) return n; out = a / b; break;
+				case NODE_MOD: if (b == 0) return n; out = a % b; break;
+				case NODE_LT: out = a < b; break;
+				case NODE_GT: out = a > b; break;
+				case NODE_LE: out = a <= b; break;
+				case NODE_GE: out = a >= b; break;
+				case NODE_EQ: out = a == b; break;
+				case NODE_NEQ: out = a != b; break;
+				case NODE_AND: out = a && b; break;
+				case NODE_OR: out = a || b; break;
+				default: return n;
+			}
+			return make_leaf(NODE_CONST, out, NULL);
+		}
+
+		if (n->type == NODE_NOT && n->left && n->left->type == NODE_CONST) {
+			return make_leaf(NODE_CONST, !n->left->int_val, NULL);
+		}
+
+		return n;
+	}
+
 	// ---------------------------------------------------------
 	// EXECUTION ENGINE (Interpreter)
 	// Recursively runs the AST derived from the code.
@@ -77,7 +192,7 @@
 
 		switch(n->type) {
 			case NODE_CONST:  return n->int_val;
-			case NODE_VAR:    return *get_var_ptr(n->str_val);
+			case NODE_VAR:    return get_numeric(n->str_val);
 			
             case NODE_BREAK: cf_state = 1; return 0;
             case NODE_CONTINUE: cf_state = 2; return 0;
@@ -87,6 +202,7 @@
 			case NODE_SUB:    return execute(n->left) - execute(n->right);
 			case NODE_MUL:    return execute(n->left) * execute(n->right);
 			case NODE_DIV:    return execute(n->left) / execute(n->right);
+			case NODE_MOD:    return execute(n->left) % execute(n->right);
 			case NODE_LT:     return execute(n->left) < execute(n->right);
 			case NODE_GT:     return execute(n->left) > execute(n->right);
 			case NODE_LE:     return execute(n->left) <= execute(n->right);
@@ -99,7 +215,11 @@
 
 			// Logic
 			case NODE_ASSIGN: 
-				*get_var_ptr(n->str_val) = execute(n->right);
+				assign_numeric(n->str_val, execute(n->right));
+				return 0;
+
+			case NODE_ASSIGN_STR:
+				assign_string(n->str_val, n->right ? n->right->str_val : "");
 				return 0;
 			
 			case NODE_PRINT:
@@ -107,11 +227,21 @@
 				else printf("%d\n", execute(n->left));
 				return 0;
 
+			case NODE_PRINT_VAR: {
+				int idx = find_symbol(n->str_val);
+				if (idx >= 0 && sym_table[idx].type == V_STRING) {
+					printf("%s", get_string(n->str_val));
+				} else {
+					printf("%d\n", get_numeric(n->str_val));
+				}
+				return 0;
+			}
+
 			case NODE_SCAN: { // gimme(x)
 				int val;
 				printf("Input: "); 
 				scanf("%d", &val);
-				*get_var_ptr(n->str_val) = val;
+				assign_numeric(n->str_val, val);
 				return 0;
 			}
 
@@ -174,7 +304,7 @@
 %token MAIN PRINT SCAN IF ELSEIF ELSE RETURN WHILE FOR 
 %token BREAK CONTINUE INC DEC
 %token LBRACE RBRACE LPAREN RPAREN SEMICOLON
-%token ASSIGN PLUS MINUS MULT DIV GT LT LE GE EQ NEQ AND OR NOT COMMA
+%token ASSIGN PLUS MINUS MULT DIV MOD GT LT LE GE EQ NEQ AND OR NOT COMMA
 
 %type <node> statement block expr program
 
@@ -186,7 +316,7 @@
 %left EQ NEQ
 %left LT GT LE GE
 %left PLUS MINUS
-%left MULT DIV
+%left MULT DIV MOD
 %right NOT
 
 %%
@@ -196,8 +326,12 @@
 program:
 	  /* catch all main syntax but only execute the block */
 	  MAIN LPAREN RPAREN block { 
+		Node *optimized = optimize_ast($4);
 		printf("\n--- Starting Execution ---\n");
-		execute($4); 
+		execute(optimized);
+		if (semantic_errors > 0) {
+			printf("\n[Semantic checks] %d issue(s) detected.\n", semantic_errors);
+		}
 		printf("\n--- Execution Finished ---\n");
 	  }
 	;
@@ -211,32 +345,38 @@ statement:
 	| expr SEMICOLON { $$ = $1; }  /* Just an expression */
 	
 	/* Assignments: rizz x = 10; or x = 10; */
-	| TYPE_INT ID SEMICOLON { $$ = make_leaf(NODE_VAR, 0, $2); /* Declaration only */ }
-	| TYPE_FLOAT ID SEMICOLON { $$ = make_leaf(NODE_VAR, 0, $2); }
-	| TYPE_BOOL ID SEMICOLON { $$ = make_leaf(NODE_VAR, 0, $2); }
-	| TYPE_STRING ID SEMICOLON { $$ = make_leaf(NODE_VAR, 0, $2); }
+	| TYPE_INT ID SEMICOLON { declare_symbol($2, V_INT); $$ = NULL; }
+	| TYPE_FLOAT ID SEMICOLON { declare_symbol($2, V_FLOAT); $$ = NULL; }
+	| TYPE_BOOL ID SEMICOLON { declare_symbol($2, V_BOOL); $$ = NULL; }
+	| TYPE_STRING ID SEMICOLON { declare_symbol($2, V_STRING); $$ = NULL; }
 	
 	| TYPE_INT ID ASSIGN expr SEMICOLON { 
-		Node *var = make_leaf(NODE_VAR, 0, $2); 
+		declare_symbol($2, V_INT);
 		$$ = make_node(NODE_ASSIGN, NULL, $4); 
 		$$->str_val = $2; 
 	}
 	| TYPE_FLOAT ID ASSIGN expr SEMICOLON { 
-		// Treat float as int for now
+		declare_symbol($2, V_FLOAT);
 		$$ = make_node(NODE_ASSIGN, NULL, $4); 
 		$$->str_val = $2; 
 	}
 	| TYPE_BOOL ID ASSIGN expr SEMICOLON { 
+		declare_symbol($2, V_BOOL);
 		$$ = make_node(NODE_ASSIGN, NULL, $4); 
 		$$->str_val = $2; 
 	}
-	| TYPE_STRING ID ASSIGN expr SEMICOLON { 
-		$$ = make_node(NODE_ASSIGN, NULL, $4); 
+	| TYPE_STRING ID ASSIGN STRING SEMICOLON {
+		declare_symbol($2, V_STRING);
+		$$ = make_node(NODE_ASSIGN_STR, NULL, make_leaf(NODE_STRCONST, 0, $4));
 		$$->str_val = $2; 
 	}
 	
 	| ID ASSIGN expr SEMICOLON {
 		$$ = make_node(NODE_ASSIGN, NULL, $3); 
+		$$->str_val = $1;
+	}
+	| ID ASSIGN STRING SEMICOLON {
+		$$ = make_node(NODE_ASSIGN_STR, NULL, make_leaf(NODE_STRCONST, 0, $3));
 		$$->str_val = $1;
 	}
 
@@ -246,6 +386,9 @@ statement:
 	}
 	| PRINT LPAREN expr RPAREN SEMICOLON {
 		$$ = make_node(NODE_PRINT, $3, NULL);
+	}
+	| PRINT LPAREN ID RPAREN SEMICOLON {
+		$$ = make_leaf(NODE_PRINT_VAR, 0, $3);
 	}
 	
 	/* IO: gimme("%d", &val); -> For simplicity: gimme(val); */
@@ -349,6 +492,7 @@ expr:
 	| expr MINUS expr { $$ = make_node(NODE_SUB, $1, $3); }
 	| expr MULT expr { $$ = make_node(NODE_MUL, $1, $3); }
 	| expr DIV expr { $$ = make_node(NODE_DIV, $1, $3); }
+	| expr MOD expr { $$ = make_node(NODE_MOD, $1, $3); }
 	| expr GT expr { $$ = make_node(NODE_GT, $1, $3); }
 	| expr LT expr { $$ = make_node(NODE_LT, $1, $3); }
 	| expr EQ expr { $$ = make_node(NODE_EQ, $1, $3); }
