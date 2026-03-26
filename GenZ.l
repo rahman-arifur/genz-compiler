@@ -4,9 +4,13 @@
 	#include <stdlib.h>
 	#include <string.h>
 
+	extern int yylineno;
+
     // Function to handle errors
 	void yyerror(char *s);
 %}
+
+%option yylineno
 
 %%
 "collab_with"[ ]+<[^>]+>  { /* Ignore headers */ }
@@ -59,6 +63,7 @@
 "+"                       { return PLUS; }
 "-"                       { return MINUS; }
 "*"                       { return MULT; }
+"%"                       { return MOD; }
 "/"                       { return DIV; }
 ">"                       { return GT; }
 "<"                       { return LT; }
@@ -74,7 +79,9 @@
 ","                       { return COMMA; }
 
 [ \t\n]+                  { /* Skip whitespace */ }
-.                         { return yytext[0]; }
+.                         {
+	fprintf(stderr, "Lexical error at line %d: invalid token '%s'\n", yylineno, yytext);
+}
 
 %%
 
