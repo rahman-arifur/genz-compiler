@@ -8,6 +8,7 @@
 
 	void yyerror(char *s);
 	int yylex();
+	void semantic_error(const char *msg, const char *name);
 
 	// ---------------------------------------------------------
 	// SYMBOL TABLE (To store variables like 'x', 'y')
@@ -36,6 +37,10 @@
 	int ensure_symbol(const char *name) {
 		int idx = find_symbol(name);
 		if (idx >= 0) return idx;
+		if (sym_count >= 100) {
+			semantic_error("symbol table overflow", name);
+			return 0;
+		}
 		sym_table[sym_count].name = strdup(name);
 		sym_table[sym_count].declared = 0;
 		sym_table[sym_count].type = V_INT;
@@ -109,7 +114,6 @@
 
 	// ---------------------------------------------------------
 	// AST NODE (Abstract Syntax Tree)
-	// This structure represents every command in our language.
 	// ---------------------------------------------------------
 	typedef struct Node {
 		int type;           // Operation type (0=SEQ, 1=ASSIGN, 2=IF, 3=PRINT, etc)
@@ -179,6 +183,23 @@
 		return n;
 	}
 
+	void print_escaped(const char *s) {
+		if (!s) return;
+		for (size_t i = 0; s[i] != '\0'; i++) {
+			if (s[i] == '\\' && s[i + 1] != '\0') {
+				switch (s[i + 1]) {
+					case 'n': putchar('\n'); i++; continue;
+					case 't': putchar('\t'); i++; continue;
+					case 'r': putchar('\r'); i++; continue;
+					case '\\': putchar('\\'); i++; continue;
+					case '"': putchar('"'); i++; continue;
+					default: break;
+				}
+			}
+			putchar(s[i]);
+		}
+	}
+
 	// ---------------------------------------------------------
 	// EXECUTION ENGINE (Interpreter)
 	// Recursively runs the AST derived from the code.
@@ -201,8 +222,24 @@
 			case NODE_ADD:    return execute(n->left) + execute(n->right);
 			case NODE_SUB:    return execute(n->left) - execute(n->right);
 			case NODE_MUL:    return execute(n->left) * execute(n->right);
-			case NODE_DIV:    return execute(n->left) / execute(n->right);
-			case NODE_MOD:    return execute(n->left) % execute(n->right);
+			case NODE_DIV: {
+				int lhs = execute(n->left);
+				int rhs = execute(n->right);
+				if (rhs == 0) {
+					semantic_error("division by zero", NULL);
+					return 0;
+				}
+				return lhs / rhs;
+			}
+			case NODE_MOD: {
+				int lhs = execute(n->left);
+				int rhs = execute(n->right);
+				if (rhs == 0) {
+					semantic_error("modulo by zero", NULL);
+					return 0;
+				}
+				return lhs % rhs;
+			}
 			case NODE_LT:     return execute(n->left) < execute(n->right);
 			case NODE_GT:     return execute(n->left) > execute(n->right);
 			case NODE_LE:     return execute(n->left) <= execute(n->right);
@@ -223,14 +260,14 @@
 				return 0;
 			
 			case NODE_PRINT:
-				if (n->str_val) printf("%s", n->str_val);
+				if (n->str_val) print_escaped(n->str_val);
 				else printf("%d\n", execute(n->left));
 				return 0;
 
 			case NODE_PRINT_VAR: {
 				int idx = find_symbol(n->str_val);
 				if (idx >= 0 && sym_table[idx].type == V_STRING) {
-					printf("%s", get_string(n->str_val));
+					print_escaped(get_string(n->str_val));
 				} else {
 					printf("%d\n", get_numeric(n->str_val));
 				}
