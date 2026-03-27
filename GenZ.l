@@ -21,7 +21,8 @@
 
 "rizz"                    { return TYPE_INT; }
 "bet"                     { return TYPE_BOOL; }
-"ish"                     { return TYPE_FLOAT; /* Treated as int for demo */ }
+"ish"                     { return TYPE_FLOAT; }
+"bigish"                  { return TYPE_DOUBLE; }
 "yap"                     { return TYPE_STRING; }
 
 "main_character"          { return MAIN; }
@@ -46,6 +47,7 @@
 "no_cap"                  { yylval.num = 1; return NUMBER; }
 
 [a-zA-Z_][a-zA-Z0-9_]*    { yylval.str = strdup(yytext); return ID; }
+[0-9]+\.[0-9]+([eE][+-]?[0-9]+)? { yylval.fnum = atof(yytext); return FNUMBER; }
 [0-9]+                    { yylval.num = atoi(yytext); return NUMBER; }
 \"[^"]*\"                 { 
     yylval.str = strdup(yytext+1); 

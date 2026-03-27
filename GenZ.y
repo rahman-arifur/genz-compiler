@@ -13,13 +13,13 @@
 	// ---------------------------------------------------------
 	// SYMBOL TABLE (To store variables like 'x', 'y')
 	// ---------------------------------------------------------
-	enum VarType { V_INT=1, V_BOOL, V_FLOAT, V_STRING };
+	enum VarType { V_INT=1, V_BOOL, V_FLOAT, V_DOUBLE, V_STRING };
 
 	struct Symbol {
 		char *name;
 		int declared;
 		int type;
-		int int_value;
+		double num_value;
 		char *str_value;
 	} sym_table[100];
 
@@ -44,7 +44,7 @@
 		sym_table[sym_count].name = strdup(name);
 		sym_table[sym_count].declared = 0;
 		sym_table[sym_count].type = V_INT;
-		sym_table[sym_count].int_value = 0;
+		sym_table[sym_count].num_value = 0.0;
 		sym_table[sym_count].str_value = NULL;
 		return sym_count++;
 	}
@@ -64,7 +64,18 @@
 		semantic_errors++;
 	}
 
-	void assign_numeric(const char *name, int value) {
+	int is_whole_number(double v) {
+		long long iv = (long long)v;
+		return v == (double)iv;
+	}
+
+	double coerce_numeric_for_type(int type, double value) {
+		if (type == V_BOOL) return value != 0.0 ? 1.0 : 0.0;
+		if (type == V_INT) return (double)((long long)value);
+		return value;
+	}
+
+	void assign_numeric(const char *name, double value) {
 		int idx = ensure_symbol(name);
 		if (!sym_table[idx].declared) {
 			// Keep backward compatibility for undeclared IDs in old tests.
@@ -74,11 +85,7 @@
 			semantic_error("cannot assign numeric value to string variable", name);
 			return;
 		}
-		if (sym_table[idx].type == V_BOOL) {
-			sym_table[idx].int_value = value ? 1 : 0; // implicit numeric->bool conversion
-			return;
-		}
-		sym_table[idx].int_value = value;
+		sym_table[idx].num_value = coerce_numeric_for_type(sym_table[idx].type, value);
 	}
 
 	void assign_string(const char *name, const char *value) {
@@ -94,13 +101,13 @@
 		sym_table[idx].str_value = strdup(value ? value : "");
 	}
 
-	int get_numeric(const char *name) {
+	double get_numeric(const char *name) {
 		int idx = ensure_symbol(name);
 		if (sym_table[idx].type == V_STRING) {
 			semantic_error("cannot use string variable in numeric expression", name);
 			return 0;
 		}
-		return sym_table[idx].int_value;
+		return sym_table[idx].num_value;
 	}
 
 	const char* get_string(const char *name) {
@@ -114,10 +121,11 @@
 
 	// ---------------------------------------------------------
 	// AST NODE (Abstract Syntax Tree)
+	// This structure represents every command in our language.
 	// ---------------------------------------------------------
 	typedef struct Node {
 		int type;           // Operation type (0=SEQ, 1=ASSIGN, 2=IF, 3=PRINT, etc)
-		int int_val;        // For numbers (10, 20)
+		double num_val;     // For numbers (10, 20, 3.14)
 		char *str_val;      // For variable names ("x") or strings ("Hello")
 		struct Node *left;  // Left child
 		struct Node *right; // Right child
@@ -140,9 +148,9 @@
 		return n;
 	}
 
-	Node* make_leaf(int type, int val, char *str) {
+	Node* make_leaf(int type, double val, char *str) {
 		Node *n = (Node*)malloc(sizeof(Node));
-		n->type = type; n->int_val = val; n->str_val = str; n->left = NULL; n->right = NULL; n->next = NULL;
+		n->type = type; n->num_val = val; n->str_val = str; n->left = NULL; n->right = NULL; n->next = NULL;
 		return n;
 	}
 
@@ -154,15 +162,18 @@
 
 		// Constant folding for pure numeric expressions.
 		if (n->left && n->right && n->left->type == NODE_CONST && n->right->type == NODE_CONST) {
-			int a = n->left->int_val;
-			int b = n->right->int_val;
-			int out;
+			double a = n->left->num_val;
+			double b = n->right->num_val;
+			double out;
 			switch (n->type) {
 				case NODE_ADD: out = a + b; break;
 				case NODE_SUB: out = a - b; break;
 				case NODE_MUL: out = a * b; break;
 				case NODE_DIV: if (b == 0) return n; out = a / b; break;
-				case NODE_MOD: if (b == 0) return n; out = a % b; break;
+				case NODE_MOD:
+					if (b == 0 || !is_whole_number(a) || !is_whole_number(b)) return n;
+					out = (double)((long long)a % (long long)b);
+					break;
 				case NODE_LT: out = a < b; break;
 				case NODE_GT: out = a > b; break;
 				case NODE_LE: out = a <= b; break;
@@ -177,7 +188,7 @@
 		}
 
 		if (n->type == NODE_NOT && n->left && n->left->type == NODE_CONST) {
-			return make_leaf(NODE_CONST, !n->left->int_val, NULL);
+			return make_leaf(NODE_CONST, !n->left->num_val, NULL);
 		}
 
 		return n;
@@ -200,19 +211,22 @@
 		}
 	}
 
+	void print_number_line(double v) {
+		long long iv = (long long)v;
+		if (v == (double)iv) printf("%lld\n", iv);
+		else printf("%g\n", v);
+	}
+
 	// ---------------------------------------------------------
 	// EXECUTION ENGINE (Interpreter)
 	// Recursively runs the AST derived from the code.
 	// ---------------------------------------------------------
-	int execute(Node *n) {
+	double execute(Node *n) {
 		if (!n) return 0;
         if (cf_state != 0) return 0; // Skip if flow altered (break/continue)
 
-		// Execute Left and Right first for operations
-		int v_left = 0, v_right = 0;
-
 		switch(n->type) {
-			case NODE_CONST:  return n->int_val;
+			case NODE_CONST:  return n->num_val;
 			case NODE_VAR:    return get_numeric(n->str_val);
 			
             case NODE_BREAK: cf_state = 1; return 0;
@@ -223,8 +237,8 @@
 			case NODE_SUB:    return execute(n->left) - execute(n->right);
 			case NODE_MUL:    return execute(n->left) * execute(n->right);
 			case NODE_DIV: {
-				int lhs = execute(n->left);
-				int rhs = execute(n->right);
+				double lhs = execute(n->left);
+				double rhs = execute(n->right);
 				if (rhs == 0) {
 					semantic_error("division by zero", NULL);
 					return 0;
@@ -232,13 +246,17 @@
 				return lhs / rhs;
 			}
 			case NODE_MOD: {
-				int lhs = execute(n->left);
-				int rhs = execute(n->right);
+				double lhs = execute(n->left);
+				double rhs = execute(n->right);
 				if (rhs == 0) {
 					semantic_error("modulo by zero", NULL);
 					return 0;
 				}
-				return lhs % rhs;
+				if (!is_whole_number(lhs) || !is_whole_number(rhs)) {
+					semantic_error("modulo requires integer operands", NULL);
+					return 0;
+				}
+				return (double)((long long)lhs % (long long)rhs);
 			}
 			case NODE_LT:     return execute(n->left) < execute(n->right);
 			case NODE_GT:     return execute(n->left) > execute(n->right);
@@ -261,7 +279,7 @@
 			
 			case NODE_PRINT:
 				if (n->str_val) print_escaped(n->str_val);
-				else printf("%d\n", execute(n->left));
+				else print_number_line(execute(n->left));
 				return 0;
 
 			case NODE_PRINT_VAR: {
@@ -269,15 +287,15 @@
 				if (idx >= 0 && sym_table[idx].type == V_STRING) {
 					print_escaped(get_string(n->str_val));
 				} else {
-					printf("%d\n", get_numeric(n->str_val));
+					print_number_line(get_numeric(n->str_val));
 				}
 				return 0;
 			}
 
 			case NODE_SCAN: { // gimme(x)
-				int val;
+				double val;
 				printf("Input: "); 
-				scanf("%d", &val);
+				scanf("%lf", &val);
 				assign_numeric(n->str_val, val);
 				return 0;
 			}
@@ -331,13 +349,15 @@
 /* Bison Declarations */
 %union {
 	int num;
+	double fnum;
 	char *str;
 	struct Node *node;
 }
 
 %token <num> NUMBER
+%token <fnum> FNUMBER
 %token <str> ID STRING
-%token TYPE_INT TYPE_BOOL TYPE_FLOAT TYPE_STRING 
+%token TYPE_INT TYPE_BOOL TYPE_FLOAT TYPE_DOUBLE TYPE_STRING 
 %token MAIN PRINT SCAN IF ELSEIF ELSE RETURN WHILE FOR 
 %token BREAK CONTINUE INC DEC
 %token LBRACE RBRACE LPAREN RPAREN SEMICOLON
@@ -384,6 +404,7 @@ statement:
 	/* Assignments: rizz x = 10; or x = 10; */
 	| TYPE_INT ID SEMICOLON { declare_symbol($2, V_INT); $$ = NULL; }
 	| TYPE_FLOAT ID SEMICOLON { declare_symbol($2, V_FLOAT); $$ = NULL; }
+	| TYPE_DOUBLE ID SEMICOLON { declare_symbol($2, V_DOUBLE); $$ = NULL; }
 	| TYPE_BOOL ID SEMICOLON { declare_symbol($2, V_BOOL); $$ = NULL; }
 	| TYPE_STRING ID SEMICOLON { declare_symbol($2, V_STRING); $$ = NULL; }
 	
@@ -396,6 +417,11 @@ statement:
 		declare_symbol($2, V_FLOAT);
 		$$ = make_node(NODE_ASSIGN, NULL, $4); 
 		$$->str_val = $2; 
+	}
+	| TYPE_DOUBLE ID ASSIGN expr SEMICOLON {
+		declare_symbol($2, V_DOUBLE);
+		$$ = make_node(NODE_ASSIGN, NULL, $4);
+		$$->str_val = $2;
 	}
 	| TYPE_BOOL ID ASSIGN expr SEMICOLON { 
 		declare_symbol($2, V_BOOL);
@@ -541,6 +567,7 @@ expr:
 	| NOT expr { $$ = make_node(NODE_NOT, $2, NULL); }
 	| LPAREN expr RPAREN { $$ = $2; }
 	| NUMBER { $$ = make_leaf(NODE_CONST, $1, NULL); }
+	| FNUMBER { $$ = make_leaf(NODE_CONST, $1, NULL); }
 	| ID { $$ = make_leaf(NODE_VAR, 0, $1); }
 	;
 
@@ -551,6 +578,7 @@ void yyerror(char *s) {
 }
 
 int main(int argc, char *argv[]) {
+	int parse_status;
 	if (argc > 1) {
 		yyin = fopen(argv[1], "r");
 		if (!yyin) {
@@ -561,7 +589,7 @@ int main(int argc, char *argv[]) {
 		// Fallback to stdin
 		yyin = stdin;
 	}
-	yyparse();
+	parse_status = yyparse();
 	if (argc > 1) fclose(yyin);
-	return 0;
+	return parse_status;
 }
