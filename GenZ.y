@@ -100,7 +100,7 @@
 
 	void semantic_error_at(int line, const char *msg, const char *name) {
 		int report_line = line > 0 ? line : (runtime_line > 0 ? runtime_line : yylineno);
-		fprintf(stderr, "Semantic error at line %d: %s (%s)\n",
+		fprintf(stdout, "Semantic error at line %d: %s (%s)\n",
 		        report_line, msg, name ? name : "-");
 		semantic_errors++;
 	}
@@ -488,8 +488,9 @@
 				int idx = find_symbol(n->str_val);
 				if (idx >= 0 && sym_table[idx].type == V_STRING)
 					{ print_escaped(get_string(n->str_val)); putchar('\n'); }
-				else
+				else if(idx != -1)
 					print_number_line(get_numeric(n->str_val));
+				else semantic_error("undefined variable", n->str_val);
 				return 0;
 			}
 			case NODE_SCAN: {
@@ -930,6 +931,10 @@ arg_list_opt:
 	| arg_list    { $$ = $1;   }
 	;
 
+/*
+ * Build a singly-linked list of argument nodes using ->next.
+ * We append to the tail so arguments stay in order.
+ */
 arg_list:
 	  expr {
 		$$ = $1; $$->next = NULL;
@@ -947,7 +952,7 @@ arg_list:
 %%
 
 void yyerror(char *s) {
-	fprintf(stderr, "Error at line %d: %s\n", yylineno, s);
+	fprintf(stdout, "Error at line %d: %s\n", yylineno, s);
 }
 
 int main(int argc, char *argv[]) {
